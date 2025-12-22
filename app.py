@@ -4,8 +4,14 @@ import uuid
 from datetime import datetime, timezone
 from dateutil import parser as dateparser
 from flask import Flask, request, jsonify, send_file
-import boto3
-from botocore.exceptions import BotoCoreError, ClientError
+try:
+    from google.cloud import storage
+    from google.oauth2 import service_account
+except Exception:
+    storage = None
+    service_account = None
+
+from datetime import timedelta
 
 from config import Config
 from models import db, Event, Photo
@@ -19,24 +25,32 @@ def create_app():
     with app.app_context():
         db.create_all()
 
-    # S3 client configured from environment
-    s3 = boto3.client(
-        's3',
-        region_name=app.config.get('AWS_REGION'),
-        aws_access_key_id=app.config.get('AWS_ACCESS_KEY_ID'),
-        aws_secret_access_key=app.config.get('AWS_SECRET_ACCESS_KEY'),
-    )
-
-    def generate_presigned_url(key, expires_in=3600):
-        bucket = app.config.get('AWS_S3_BUCKET')
+    # GCS client configured from environment
+    gcs_bucket_name = app.config.get('GCP_BUCKET')
+    gcs_client = None
+    if storage is None:
+        app.logger.warning('google-cloud-storage not installed; GCS operations will fail')
+    else:
+        creds_path = app.config.get('GCP_CREDENTIALS_JSON')
         try:
-            url = s3.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': bucket, 'Key': key},
-                ExpiresIn=expires_in,
-            )
+            if creds_path and service_account is not None:
+                creds = service_account.Credentials.from_service_account_file(creds_path)
+                gcs_client = storage.Client(credentials=creds)
+            else:
+                gcs_client = storage.Client()
+        except Exception as e:
+            app.logger.exception('Failed to create GCS client: %s', e)
+
+
+    def generate_signed_url(key, expires_in=3600):
+        if gcs_client is None or not gcs_bucket_name:
+            return None
+        try:
+            bucket = gcs_client.bucket(gcs_bucket_name)
+            blob = bucket.blob(key)
+            url = blob.generate_signed_url(expiration=timedelta(seconds=expires_in), version='v4')
             return url
-        except (BotoCoreError, ClientError):
+        except Exception:
             return None
 
     @app.route('/photo/save', methods=['POST'])
@@ -59,28 +73,22 @@ def create_app():
         # Build key
         ext = os.path.splitext(file.filename)[1] or ''
         key = f"photos/{user_id}/{uuid.uuid4()}{ext}"
-        bucket = app.config.get('AWS_S3_BUCKET')
-        if not bucket:
-            return jsonify({"error": "S3 bucket not configured (set AWS_S3_BUCKET)"}), 500
-
+        bucket_name = gcs_bucket_name
+        if not bucket_name or gcs_client is None:
+            return jsonify({"error": "GCS bucket not configured or client unavailable (set GCP_BUCKET and provide credentials)"}), 500
         try:
-            s3.upload_fileobj(
-                file.stream,
-                bucket,
-                key,
-                ExtraArgs={
-                    'ACL': 'private',
-                    'ContentType': file.mimetype or 'application/octet-stream'
-                }
-            )
-        except (BotoCoreError, ClientError) as e:
-            return jsonify({"error": "Failed to upload to S3", "details": str(e)}), 500
+            bucket = gcs_client.bucket(bucket_name)
+            blob = bucket.blob(key)
+            # upload_from_file accepts a file-like object
+            blob.upload_from_file(file.stream, content_type=(file.mimetype or 'application/octet-stream'))
+        except Exception as e:
+            return jsonify({"error": "Failed to upload to GCS", "details": str(e)}), 500
 
         photo = Photo(user_id=user_id, event_id=(event.id if event else None), s3_key=key, content_type=file.mimetype)
         db.session.add(photo)
         db.session.commit()
 
-        url = generate_presigned_url(key)
+        url = generate_signed_url(key)
         return jsonify({"photo_id": photo.id, "url": url}), 201
 
     @app.route('/event/create', methods=['POST'])

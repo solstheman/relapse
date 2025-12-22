@@ -3,7 +3,8 @@ import os
 class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///relapse.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    AWS_REGION = os.getenv("AWS_REGION")
-    AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-    AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-    AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+    # Google Cloud Storage configuration
+    GCP_BUCKET = os.getenv("GCP_BUCKET")
+    # Optional path to service account JSON file. If not provided, the client
+    # will use Application Default Credentials (ADC).
+    GCP_CREDENTIALS_JSON = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
