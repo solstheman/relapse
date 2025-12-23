@@ -13,6 +13,12 @@ except Exception:
 
 from datetime import timedelta
 
+from dotenv import load_dotenv
+
+# Load .env from the repository root so environment variables are available
+# to `Config` and the rest of the app.
+load_dotenv()
+
 from config import Config
 from models import db, Event, Photo
 
