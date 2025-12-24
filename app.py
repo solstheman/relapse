@@ -126,15 +126,23 @@ def create_app():
         if not event:
             return jsonify({"error": "Event not found"}), 404
 
-        # Compare current UTC (naive) with stored naive UTC
-        now = datetime.utcnow()
-        if now < event.process_datetime:
+        # Use an offset-aware now and normalize the stored process_datetime to aware UTC
+        now = datetime.now(timezone.utc)
+        event_dt = event.process_datetime
+        if event_dt is None:
+            return jsonify({"error": "Event has no process_datetime"}), 500
+        # If stored as naive, treat as UTC; if already aware, normalize to UTC
+        if event_dt.tzinfo is None:
+            event_dt = event_dt.replace(tzinfo=timezone.utc)
+        else:
+            event_dt = event_dt.astimezone(timezone.utc)
+        if now < event_dt:
             return jsonify({"message": "photos not ready"}), 201
 
         photos = Photo.query.filter_by(event_id=event.id).order_by(Photo.created_at.asc()).all()
         items = []
         for p in photos:
-            url = generate_presigned_url(p.s3_key)
+            url = generate_signed_url(p.s3_key)
             items.append({"photo_id": p.id, "url": url, "created_at": p.created_at.isoformat()})
         return jsonify({"event": event.uuid, "photos": items}), 200
 
@@ -147,7 +155,7 @@ def create_app():
         photos = Photo.query.filter_by(user_id=user_id).order_by(Photo.created_at.desc()).all()
         items = []
         for p in photos:
-            url = generate_presigned_url(p.s3_key)
+            url = generate_signed_url(p.s3_key)
             items.append({"photo_id": p.id, "url": url, "event_uuid": (p.event.uuid if p.event else None), "created_at": p.created_at.isoformat()})
         return jsonify({"user_id": user_id, "photos": items}), 200
 
