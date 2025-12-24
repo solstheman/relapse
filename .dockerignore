@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.git
+.venv
+venv/
+instance/
+gac_cred.json
+.env
+.vscode/
+.DS_Store
+*.log
+dist/
+build/
+*.egg-info
