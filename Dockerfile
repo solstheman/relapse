@@ -12,7 +12,8 @@ RUN apt-get update \
 
 # Install Python deps
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# Install requirements and ensure gunicorn is available for the CMD
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # Copy app sources
 COPY . .
