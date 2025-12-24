@@ -12,8 +12,8 @@ RUN apt-get update \
 
 # Install Python deps
 COPY requirements.txt ./
-# Install requirements and ensure gunicorn is available for the CMD
-RUN pip install --no-cache-dir -r requirements.txt gunicorn
+# Install requirements and ensure gunicorn (>=20.1.0) is available for the CMD
+RUN pip install --no-cache-dir -r requirements.txt "gunicorn>=20.1.0"
 
 # Copy app sources
 COPY . .
@@ -25,4 +25,4 @@ USER appuser
 EXPOSE 8000
 
 # Use gunicorn for production serving; adjust workers as needed
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8000", "--workers", "4"]
+CMD ["gunicorn", "wsgi:app", "--bind", "0.0.0.0:8000", "--workers", "4"]
