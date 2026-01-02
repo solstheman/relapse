@@ -159,6 +159,28 @@ def create_app():
             items.append({"photo_id": p.id, "url": url, "event_uuid": (p.event.uuid if p.event else None), "created_at": p.created_at.isoformat()})
         return jsonify({"user_id": user_id, "photos": items}), 200
 
+    @app.route('/events', methods=['GET'])
+    def events_list():
+        # Return all events with UTC-normalized process_datetime
+        events = Event.query.order_by(Event.process_datetime.asc()).all()
+        items = []
+        for e in events:
+            event_dt = e.process_datetime
+            if event_dt is None:
+                iso = None
+            else:
+                if event_dt.tzinfo is None:
+                    event_dt_aware = event_dt.replace(tzinfo=timezone.utc)
+                else:
+                    event_dt_aware = event_dt.astimezone(timezone.utc)
+                iso = event_dt_aware.isoformat()
+            items.append({
+                "event_uuid": e.uuid,
+                "name": e.name,
+                "process_datetime": iso,
+            })
+        return jsonify({"events": items}), 200
+
     return app
 
 if __name__ == '__main__':
